@@ -3,7 +3,14 @@ let tasks = [];
 let currentFilter = 'all';
 let searchQuery = '';
 
-const API_URL = '/api';
+// Get API URL from environment or use a configurable default
+// For development: http://localhost:5000
+// For production: https://your-render-url.onrender.com
+const API_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:5000/api'
+    : `${window.location.origin}/api`;
+
+console.log('API URL:', API_URL);
 
 // DOM Elements
 const taskForm = document.getElementById('taskForm');
@@ -52,13 +59,23 @@ function setupEventListeners() {
 // Load tasks from API
 async function loadTasks() {
     try {
-        const response = await fetch(`${API_URL}/tasks`);
+        const response = await fetch(`${API_URL}/tasks`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         tasks = await response.json();
         updateStats();
         renderTasks();
     } catch (error) {
         console.error('Error loading tasks:', error);
-        showNotification('Error loading tasks', 'error');
+        showNotification('Error loading tasks. Check console for details.', 'error');
     }
 }
 
@@ -87,17 +104,19 @@ async function handleAddTask(e) {
             body: JSON.stringify(newTask)
         });
 
-        if (response.ok) {
-            const createdTask = await response.json();
-            tasks.push(createdTask);
-            updateStats();
-            renderTasks();
-            taskForm.reset();
-            showNotification('Task added successfully!', 'success');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        const createdTask = await response.json();
+        tasks.push(createdTask);
+        updateStats();
+        renderTasks();
+        taskForm.reset();
+        showNotification('✅ Task added successfully!', 'success');
     } catch (error) {
         console.error('Error adding task:', error);
-        showNotification('Error adding task', 'error');
+        showNotification('❌ Error adding task. Check console for details.', 'error');
     }
 }
 
@@ -115,13 +134,15 @@ async function toggleTask(taskId) {
             body: JSON.stringify({ completed: !task.completed })
         });
 
-        if (response.ok) {
-            const updatedTask = await response.json();
-            const index = tasks.findIndex(t => t.id === taskId);
-            tasks[index] = updatedTask;
-            updateStats();
-            renderTasks();
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        const updatedTask = await response.json();
+        const index = tasks.findIndex(t => t.id === taskId);
+        tasks[index] = updatedTask;
+        updateStats();
+        renderTasks();
     } catch (error) {
         console.error('Error updating task:', error);
         showNotification('Error updating task', 'error');
@@ -137,12 +158,14 @@ async function deleteTask(taskId) {
             method: 'DELETE'
         });
 
-        if (response.ok) {
-            tasks = tasks.filter(t => t.id !== taskId);
-            updateStats();
-            renderTasks();
-            showNotification('Task deleted successfully!', 'success');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        tasks = tasks.filter(t => t.id !== taskId);
+        updateStats();
+        renderTasks();
+        showNotification('✅ Task deleted successfully!', 'success');
     } catch (error) {
         console.error('Error deleting task:', error);
         showNotification('Error deleting task', 'error');
@@ -190,36 +213,35 @@ function renderTasks() {
     const filteredTasks = getFilteredTasks();
 
     if (filteredTasks.length === 0) {
-        tasksList.innerHTML = '';
-        emptyState.style.display = 'block';
+        tasksList.innerHTML = '';\n        emptyState.style.display = 'block';
         return;
     }
 
     emptyState.style.display = 'none';
     tasksList.innerHTML = filteredTasks.map(task => `
-        <div class="task-item ${task.completed ? 'completed' : ''}">
+        <div class=\"task-item ${task.completed ? 'completed' : ''}\">
             <input
-                type="checkbox"
-                class="task-checkbox"
+                type=\"checkbox\"
+                class=\"task-checkbox\"
                 ${task.completed ? 'checked' : ''}
-                onchange="toggleTask(${task.id})"
+                onchange=\"toggleTask(${task.id})\"
             />
-            <div class="task-content">
-                <div class="task-title">${escapeHtml(task.title)}</div>
-                ${task.description ? `<div class="task-description">${escapeHtml(task.description)}</div>` : ''}
-                <div class="task-meta">
-                    <span class="priority-badge priority-${task.priority}">
+            <div class=\"task-content\">
+                <div class=\"task-title\">${escapeHtml(task.title)}</div>
+                ${task.description ? `<div class=\"task-description\">${escapeHtml(task.description)}</div>` : ''}
+                <div class=\"task-meta\">
+                    <span class=\"priority-badge priority-${task.priority}\">
                         ${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
                     </span>
                     ${task.due_date ? `
-                        <span class="due-date">
+                        <span class=\"due-date\">
                             📅 ${formatDate(task.due_date)}
                         </span>
                     ` : ''}
                 </div>
             </div>
-            <div class="task-actions">
-                <button class="delete-btn" onclick="deleteTask(${task.id})">🗑️ Delete</button>
+            <div class=\"task-actions\">
+                <button class=\"delete-btn\" onclick=\"deleteTask(${task.id})\">🗑️ Delete</button>
             </div>
         </div>
     `).join('');
@@ -229,6 +251,11 @@ function renderTasks() {
 async function updateStats() {
     try {
         const response = await fetch(`${API_URL}/stats`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const stats = await response.json();
 
         document.getElementById('totalTasks').textContent = stats.total;
@@ -251,14 +278,59 @@ function escapeHtml(text) {
         '&': '&amp;',
         '<': '&lt;',
         '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
+        '\"': '&quot;',
+        \"'\": '&#039;'
     };
-    return text.replace(/[&<>"']/g, m => map[m]);
+    return text.replace(/[&<>\"']/g, m => map[m]);
 }
 
 function showNotification(message, type = 'info') {
-    // Simple console notification for now
     console.log(`[${type.toUpperCase()}] ${message}`);
-    // You can enhance this with a toast notification library
+    // Enhanced notification display
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#10b981' : '#3b82f6'};
+        color: white;
+        border-radius: 8px;
+        z-index: 1000;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        animation: slideIn 0.3s ease-out;
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
 }
+
+// Add animation styles
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideIn {
+        from {
+            transform: translateX(400px);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    @keyframes slideOut {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(400px);
+            opacity: 0;
+        }
+    }
+`;
+document.head.appendChild(style);
