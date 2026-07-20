@@ -1,25 +1,25 @@
-# Task Manager - Full Stack Web App
+# Task Manager - Modern Full Stack Web App
 
-A modern, responsive task management application with a beautiful web UI and REST API backend.
+A beautiful, intuitive task management application inspired by Microsoft Tasks and Todoist with Kanban board, project management, and sub-tasks.
 
 ## Features
 
-- ✅ Add, edit, and delete tasks
-- ✅ Mark tasks as complete/incomplete
-- ✅ Filter tasks by status
-- ✅ Search tasks
-- ✅ Due dates and priorities
-- ✅ Persistent storage
-- ✅ Responsive design (mobile-friendly)
-- ✅ Dark/Light theme toggle
-- ✅ Real-time UI updates
+✨ **Core Features:**
+- 📋 Create and manage multiple projects
+- 📌 Kanban board view (To Do, In Progress, Done)
+- ✅ Sub-tasks support
+- 🏷️ Tags and priorities
+- 📅 Due dates with reminders
+- 🎨 Clean, elegant UI inspired by Microsoft Tasks
+- 🌓 Dark/Light theme
+- 📱 Fully responsive design
 
 ## Tech Stack
 
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Backend**: Python Flask
-- **Storage**: JSON (can be upgraded to database)
-- **Hosting**: Netlify (Frontend) + Flask server
+- **Storage**: JSON (upgradeable to PostgreSQL)
+- **Hosting**: Netlify (Frontend) + Render (Backend)
 
 ## Installation
 
@@ -37,57 +37,62 @@ pip install -r requirements.txt
 python app.py
 ```
 
-The app will be available at `http://localhost:5000`
+Visit `http://localhost:5000`
 
 ## Project Structure
 
 ```
 task-manager/
 ├── app.py                 # Flask backend
-├── requirements.txt       # Python dependencies
-├── tasks.json            # Task storage
+├── requirements.txt       # Dependencies
+├── tasks.json            # Data storage
 ├── public/
-│   ├── index.html        # Main HTML
+│   ├── index.html        # Main UI
 │   ├── css/
-│   │   └── style.css     # Styling
+│   │   └── style.css     # Elegant styling
 │   └── js/
 │       └── app.js        # Frontend logic
+├── render.yaml           # Render config
+├── Procfile             # Server config
 └── README.md
 ```
 
 ## API Endpoints
 
+### Projects
+- `GET /api/projects` - Get all projects
+- `POST /api/projects` - Create project
+- `PUT /api/projects/<id>` - Update project
+- `DELETE /api/projects/<id>` - Delete project
+
+### Tasks
 - `GET /api/tasks` - Get all tasks
-- `POST /api/tasks` - Create a new task
-- `PUT /api/tasks/<id>` - Update a task
-- `DELETE /api/tasks/<id>` - Delete a task
-- `GET /` - Serve the web UI
-
-## Deployment
-
-### Deploy Frontend to Netlify
-
-1. Push code to GitHub
-2. Connect repository to Netlify
-3. Set build settings:
-   - Build command: (leave empty - static files)
-   - Publish directory: `public`
-
-### Deploy Backend
-
-For the backend, you have options:
-- Deploy to Render, Railway, or Heroku
-- Use serverless functions
-- Keep it local for development
+- `POST /api/tasks` - Create task
+- `PUT /api/tasks/<id>` - Update task
+- `DELETE /api/tasks/<id>` - Delete task
+- `POST /api/tasks/<id>/subtasks` - Add subtask
+- `PUT /api/tasks/<id>/subtasks/<subtask_id>` - Update subtask
+- `DELETE /api/tasks/<id>/subtasks/<subtask_id>` - Delete subtask
 
 ## Usage
 
-1. Open the web interface
-2. Add tasks with title, description, priority, and due date
-3. Click checkboxes to complete tasks
-4. Use filters to view pending or completed tasks
-5. Delete tasks with the trash icon
-6. Toggle dark/light mode with the theme button
+1. **Create a Project** - Click "New Project" to get started
+2. **Add Tasks** - Type a task name and choose status (To Do, In Progress, Done)
+3. **Add Sub-tasks** - Click on a task to expand and add sub-tasks
+4. **Set Priority & Due Date** - Use the task details panel
+5. **Drag & Drop** - Move tasks between Kanban columns
+6. **Switch Views** - Toggle between Kanban and List views
+
+## Deployment
+
+**Frontend (Netlify):**
+- Connect GitHub repo
+- Publish directory: `public`
+- Auto-deploys on push
+
+**Backend (Render):**
+- Uses `render.yaml` configuration
+- Auto-deploys on push
 
 ## License
 

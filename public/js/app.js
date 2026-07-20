@@ -1,37 +1,36 @@
 // Global state
-let tasks = [];
-let currentFilter = 'all';
-let searchQuery = '';
+let currentProject = null;
+let projects = [];
+let tasks = {};
 
-// Get API URL from environment or use a configurable default
-// For development: http://localhost:5000
-// For production: https://your-render-url.onrender.com
-const API_URL = window.location.hostname === 'localhost' 
+const API_URL = window.location.hostname === 'localhost'
     ? 'http://localhost:5000/api'
     : `${window.location.origin}/api`;
 
 console.log('API URL:', API_URL);
 
 // DOM Elements
-const taskForm = document.getElementById('taskForm');
-const taskTitle = document.getElementById('taskTitle');
-const taskDescription = document.getElementById('taskDescription');
-const taskPriority = document.getElementById('taskPriority');
-const taskDueDate = document.getElementById('taskDueDate');
-const tasksList = document.getElementById('tasksList');
-const emptyState = document.getElementById('emptyState');
+const sidebar = document.querySelector('.sidebar');
+const projectsList = document.getElementById('projectsList');
+const projectsGrid = document.getElementById('projectsGrid');
+const kanbanView = document.getElementById('kanbanView');
+const projectsView = document.getElementById('projectsView');
+const kanbanTitle = document.getElementById('kanbanTitle');
+const backBtn = document.getElementById('backBtn');
+const newProjectBtn = document.getElementById('newProjectBtn');
+const createProjectBtn = document.getElementById('createProjectBtn');
+const projectModal = document.getElementById('projectModal');
+const taskModal = document.getElementById('taskModal');
 const themeToggle = document.getElementById('themeToggle');
-const searchInput = document.getElementById('searchInput');
-const filterButtons = document.querySelectorAll('.filter-btn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
-    loadTasks();
     setupEventListeners();
+    loadProjects();
 });
 
-// Theme Toggle
+// Theme
 function initializeTheme() {
     const isDarkMode = localStorage.getItem('darkMode') === 'true';
     if (isDarkMode) {
@@ -47,290 +46,305 @@ themeToggle.addEventListener('click', () => {
     themeToggle.textContent = isDarkMode ? '☀️' : '🌙';
 });
 
-// Setup Event Listeners
+// Event Listeners
 function setupEventListeners() {
-    taskForm.addEventListener('submit', handleAddTask);
-    searchInput.addEventListener('input', handleSearch);
-    filterButtons.forEach(btn => {
-        btn.addEventListener('click', (e) => handleFilterChange(e.target.dataset.filter));
+    // Projects
+    newProjectBtn.addEventListener('click', openProjectModal);
+    createProjectBtn.addEventListener('click', openProjectModal);
+    document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
+    document.getElementById('cancelProjectBtn').addEventListener('click', closeProjectModal);
+    document.getElementById('closeProjectModalBtn').addEventListener('click', closeProjectModal);
+
+    // Kanban
+    backBtn.addEventListener('click', showProjectsView);
+    document.querySelectorAll('.btn-add-task').forEach(btn => {
+        btn.addEventListener('click', (e) => openTaskModal(e.target.dataset.status));
+    });
+
+    // Task Modal
+    document.getElementById('closeModalBtn').addEventListener('click', closeTaskModal);
+    document.getElementById('saveTaskBtn').addEventListener('click', saveTask);
+    document.getElementById('deleteTaskBtn').addEventListener('click', deleteCurrentTask);
+    document.getElementById('addSubtaskBtn').addEventListener('click', addSubtaskInput);
+
+    // Navigation
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+        });
     });
 }
 
-// Load tasks from API
-async function loadTasks() {
+// PROJECTS
+async function loadProjects() {
     try {
-        const response = await fetch(`${API_URL}/tasks`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        tasks = await response.json();
-        updateStats();
-        renderTasks();
+        const response = await fetch(`${API_URL}/projects`);
+        if (!response.ok) throw new Error('Failed to load projects');
+        projects = await response.json();
+        renderProjectsList();
+        renderProjectsGrid();
     } catch (error) {
-        console.error('Error loading tasks:', error);
-        showNotification('Error loading tasks. Check console for details.', 'error');
+        console.error('Error loading projects:', error);
     }
 }
 
-// Add task
-async function handleAddTask(e) {
-    e.preventDefault();
+function renderProjectsList() {
+    projectsList.innerHTML = projects.map(project => `
+        <button class="project-item ${currentProject?.id === project.id ? 'active' : ''}" 
+                onclick="selectProject(${project.id})" 
+                style="--color: ${project.color}">
+            ${project.name}
+        </button>
+    `).join('');
+}
 
-    if (!taskTitle.value.trim()) {
-        showNotification('Please enter a task title', 'error');
-        return;
+function renderProjectsGrid() {
+    projectsGrid.innerHTML = projects.map(project => {
+        const taskCount = project.tasks?.length || 0;
+        const completedCount = project.tasks?.filter(t => t.completed).length || 0;
+        return `
+            <div class="project-card" style="border-left-color: ${project.color}" 
+                 onclick="selectProject(${project.id})">
+                <div class="project-card-header">
+                    <div class="project-card-title">${project.name}</div>
+                    <button class="btn-icon project-card-menu" onclick="deleteProject(${project.id}, event)">×</button>
+                </div>
+                <div class="project-card-stats">
+                    <span>📋 ${taskCount} tasks</span>
+                    <span>✓ ${completedCount} done</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function selectProject(projectId) {
+    currentProject = projects.find(p => p.id === projectId);
+    kanbanTitle.textContent = currentProject.name;
+    renderKanbanBoard();
+    showKanbanView();
+}
+
+function openProjectModal() {
+    projectModal.classList.add('active');
+    document.getElementById('projectName').focus();
+}
+
+function closeProjectModal() {
+    projectModal.classList.remove('active');
+    document.getElementById('projectName').value = '';
+}
+
+async function saveProject() {
+    const name = document.getElementById('projectName').value.trim();
+    const color = document.querySelector('input[name="projectColor"]:checked').value;
+
+    if (!name) return;
+
+    try {
+        const response = await fetch(`${API_URL}/projects`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, color })
+        });
+
+        if (!response.ok) throw new Error('Failed to create project');
+        closeProjectModal();
+        await loadProjects();
+    } catch (error) {
+        console.error('Error creating project:', error);
+    }
+}
+
+async function deleteProject(projectId, event) {
+    event.stopPropagation();
+    if (!confirm('Delete this project?')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/projects/${projectId}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('Failed to delete project');
+        await loadProjects();
+    } catch (error) {
+        console.error('Error deleting project:', error);
+    }
+}
+
+// KANBAN
+function renderKanbanBoard() {
+    ['todo', 'inprogress', 'done'].forEach(status => {
+        const statusTasks = currentProject.tasks.filter(t => t.status === status);
+        const container = document.getElementById(`${status}Tasks`);
+        const count = document.getElementById(`${status}Count`);
+
+        count.textContent = statusTasks.length;
+        container.innerHTML = statusTasks.map(task => `
+            <div class="task-card ${task.priority}" onclick="openTaskModal(null, ${task.id})">
+                <div class="task-card-title">${task.title}</div>
+                <div class="task-card-footer">
+                    <span class="priority-badge priority-${task.priority}">${task.priority}</span>
+                    ${task.subtasks?.length ? `<span>🔗 ${task.subtasks.filter(s => s.completed).length}/${task.subtasks.length}</span>` : ''}
+                </div>
+            </div>
+        `).join('');
+    });
+}
+
+function showKanbanView() {
+    projectsView.classList.remove('active');
+    kanbanView.classList.add('active');
+}
+
+function showProjectsView() {
+    kanbanView.classList.remove('active');
+    projectsView.classList.add('active');
+    currentProject = null;
+}
+
+// TASKS
+let editingTask = null;
+
+function openTaskModal(status, taskId) {
+    editingTask = null;
+    document.getElementById('taskTitle').value = '';
+    document.getElementById('taskDescription').value = '';
+    document.getElementById('taskPriority').value = 'medium';
+    document.getElementById('taskDueDate').value = '';
+    document.getElementById('subtasksList').innerHTML = '';
+    document.getElementById('deleteTaskBtn').style.display = taskId ? 'block' : 'none';
+
+    if (taskId) {
+        editingTask = currentProject.tasks.find(t => t.id === taskId);
+        if (editingTask) {
+            document.getElementById('taskTitle').value = editingTask.title;
+            document.getElementById('taskDescription').value = editingTask.description;
+            document.getElementById('taskPriority').value = editingTask.priority;
+            document.getElementById('taskDueDate').value = editingTask.due_date;
+            renderSubtasks();
+        }
     }
 
-    const newTask = {
-        title: taskTitle.value.trim(),
-        description: taskDescription.value.trim(),
-        priority: taskPriority.value,
-        due_date: taskDueDate.value
+    taskModal.classList.add('active');
+    document.getElementById('taskTitle').focus();
+}
+
+function closeTaskModal() {
+    taskModal.classList.remove('active');
+    editingTask = null;
+}
+
+async function saveTask() {
+    const title = document.getElementById('taskTitle').value.trim();
+    if (!title) return;
+
+    const taskData = {
+        title,
+        description: document.getElementById('taskDescription').value,
+        priority: document.getElementById('taskPriority').value,
+        due_date: document.getElementById('taskDueDate').value,
+        status: editingTask?.status || 'todo'
     };
 
     try {
-        const response = await fetch(`${API_URL}/tasks`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(newTask)
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        if (editingTask) {
+            const response = await fetch(
+                `${API_URL}/projects/${currentProject.id}/tasks/${editingTask.id}`,
+                { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(taskData) }
+            );
+            if (!response.ok) throw new Error('Failed to update task');
+        } else {
+            const response = await fetch(
+                `${API_URL}/projects/${currentProject.id}/tasks`,
+                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(taskData) }
+            );
+            if (!response.ok) throw new Error('Failed to create task');
         }
-
-        const createdTask = await response.json();
-        tasks.push(createdTask);
-        updateStats();
-        renderTasks();
-        taskForm.reset();
-        showNotification('✅ Task added successfully!', 'success');
+        closeTaskModal();
+        await loadProjectTasks(currentProject.id);
     } catch (error) {
-        console.error('Error adding task:', error);
-        showNotification('❌ Error adding task. Check console for details.', 'error');
+        console.error('Error saving task:', error);
     }
 }
 
-// Toggle task completion
-async function toggleTask(taskId) {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
+async function deleteCurrentTask() {
+    if (!editingTask || !confirm('Delete this task?')) return;
 
     try {
-        const response = await fetch(`${API_URL}/tasks/${taskId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ completed: !task.completed })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const updatedTask = await response.json();
-        const index = tasks.findIndex(t => t.id === taskId);
-        tasks[index] = updatedTask;
-        updateStats();
-        renderTasks();
-    } catch (error) {
-        console.error('Error updating task:', error);
-        showNotification('Error updating task', 'error');
-    }
-}
-
-// Delete task
-async function deleteTask(taskId) {
-    if (!confirm('Are you sure you want to delete this task?')) return;
-
-    try {
-        const response = await fetch(`${API_URL}/tasks/${taskId}`, {
-            method: 'DELETE'
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        tasks = tasks.filter(t => t.id !== taskId);
-        updateStats();
-        renderTasks();
-        showNotification('✅ Task deleted successfully!', 'success');
+        const response = await fetch(
+            `${API_URL}/projects/${currentProject.id}/tasks/${editingTask.id}`,
+            { method: 'DELETE' }
+        );
+        if (!response.ok) throw new Error('Failed to delete task');
+        closeTaskModal();
+        await loadProjectTasks(currentProject.id);
     } catch (error) {
         console.error('Error deleting task:', error);
-        showNotification('Error deleting task', 'error');
     }
 }
 
-// Handle search
-function handleSearch(e) {
-    searchQuery = e.target.value.toLowerCase();
-    renderTasks();
-}
-
-// Handle filter change
-function handleFilterChange(filter) {
-    currentFilter = filter;
-    filterButtons.forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-    renderTasks();
-}
-
-// Filter and search tasks
-function getFilteredTasks() {
-    let filtered = tasks;
-
-    // Apply filter
-    if (currentFilter === 'pending') {
-        filtered = filtered.filter(t => !t.completed);
-    } else if (currentFilter === 'completed') {
-        filtered = filtered.filter(t => t.completed);
+async function loadProjectTasks(projectId) {
+    try {
+        const response = await fetch(`${API_URL}/projects/${projectId}/tasks`);
+        if (!response.ok) throw new Error('Failed to load tasks');
+        currentProject.tasks = await response.json();
+        renderKanbanBoard();
+    } catch (error) {
+        console.error('Error loading tasks:', error);
     }
-
-    // Apply search
-    if (searchQuery) {
-        filtered = filtered.filter(t =>
-            t.title.toLowerCase().includes(searchQuery) ||
-            t.description.toLowerCase().includes(searchQuery)
-        );
-    }
-
-    return filtered;
 }
 
-// Render tasks
-function renderTasks() {
-    const filteredTasks = getFilteredTasks();
-
-    if (filteredTasks.length === 0) {
-        tasksList.innerHTML = '';\n        emptyState.style.display = 'block';
+// SUBTASKS
+function renderSubtasks() {
+    const container = document.getElementById('subtasksList');
+    if (!editingTask?.subtasks?.length) {
+        container.innerHTML = '';
         return;
     }
 
-    emptyState.style.display = 'none';
-    tasksList.innerHTML = filteredTasks.map(task => `
-        <div class=\"task-item ${task.completed ? 'completed' : ''}\">
-            <input
-                type=\"checkbox\"
-                class=\"task-checkbox\"
-                ${task.completed ? 'checked' : ''}
-                onchange=\"toggleTask(${task.id})\"
-            />
-            <div class=\"task-content\">
-                <div class=\"task-title\">${escapeHtml(task.title)}</div>
-                ${task.description ? `<div class=\"task-description\">${escapeHtml(task.description)}</div>` : ''}
-                <div class=\"task-meta\">
-                    <span class=\"priority-badge priority-${task.priority}\">
-                        ${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                    </span>
-                    ${task.due_date ? `
-                        <span class=\"due-date\">
-                            📅 ${formatDate(task.due_date)}
-                        </span>
-                    ` : ''}
-                </div>
-            </div>
-            <div class=\"task-actions\">
-                <button class=\"delete-btn\" onclick=\"deleteTask(${task.id})\">🗑️ Delete</button>
-            </div>
+    container.innerHTML = editingTask.subtasks.map((subtask, index) => `
+        <div class="subtask-item">
+            <input type="checkbox" class="subtask-checkbox" 
+                   ${subtask.completed ? 'checked' : ''}
+                   onchange="toggleSubtask(${editingTask.id}, ${subtask.id}, this.checked)">
+            <span class="subtask-text ${subtask.completed ? 'completed' : ''}">${subtask.title}</span>
+            <button class="subtask-delete" onclick="deleteSubtask(${editingTask.id}, ${subtask.id})">×</button>
         </div>
     `).join('');
 }
 
-// Update statistics
-async function updateStats() {
+function addSubtaskInput() {
+    if (!editingTask) return;
+
+    const title = prompt('Enter subtask title:');
+    if (!title) return;
+
+    fetch(`${API_URL}/projects/${currentProject.id}/tasks/${editingTask.id}/subtasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title })
+    }).then(() => loadProjectTasks(currentProject.id)).catch(console.error);
+}
+
+async function toggleSubtask(taskId, subtaskId, completed) {
     try {
-        const response = await fetch(`${API_URL}/stats`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const stats = await response.json();
-
-        document.getElementById('totalTasks').textContent = stats.total;
-        document.getElementById('completedTasks').textContent = stats.completed;
-        document.getElementById('pendingTasks').textContent = stats.pending;
-        document.getElementById('progressPercent').textContent = Math.round(stats.progress) + '%';
+        await fetch(
+            `${API_URL}/projects/${currentProject.id}/tasks/${taskId}/subtasks/${subtaskId}`,
+            { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }) }
+        );
+        await loadProjectTasks(currentProject.id);
     } catch (error) {
-        console.error('Error updating stats:', error);
+        console.error('Error updating subtask:', error);
     }
 }
 
-// Utility Functions
-function formatDate(dateString) {
-    const options = { year: 'numeric', month: 'short', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString('en-US', options);
-}
-
-function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '\"': '&quot;',
-        \"'\": '&#039;'
-    };
-    return text.replace(/[&<>\"']/g, m => map[m]);
-}
-
-function showNotification(message, type = 'info') {
-    console.log(`[${type.toUpperCase()}] ${message}`);
-    // Enhanced notification display
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 15px 20px;
-        background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#10b981' : '#3b82f6'};
-        color: white;
-        border-radius: 8px;
-        z-index: 1000;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        animation: slideIn 0.3s ease-out;
-    `;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
-}
-
-// Add animation styles
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideIn {
-        from {
-            transform: translateX(400px);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
+async function deleteSubtask(taskId, subtaskId) {
+    try {
+        await fetch(
+            `${API_URL}/projects/${currentProject.id}/tasks/${taskId}/subtasks/${subtaskId}`,
+            { method: 'DELETE' }
+        );
+        await loadProjectTasks(currentProject.id);
+    } catch (error) {
+        console.error('Error deleting subtask:', error);
     }
-    @keyframes slideOut {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(400px);
-            opacity: 0;
-        }
-    }
-`;
-document.head.appendChild(style);
+}
