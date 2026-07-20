@@ -7,7 +7,7 @@ Flask backend API for task management
 import json
 import os
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 app = Flask(__name__, static_folder='public', static_url_path='')
@@ -36,7 +36,13 @@ def save_tasks(data):
 @app.route('/')
 def index():
     """Serve the main index page."""
-    return app.send_static_file('index.html')
+    return send_from_directory('public', 'index.html')
+
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files."""
+    return send_from_directory('public', filename)
 
 
 @app.route('/api/tasks', methods=['GET'])
@@ -140,5 +146,14 @@ def get_stats():
     return jsonify(stats)
 
 
+@app.errorhandler(404)
+def not_found(error):
+    """Handle 404 errors - return index.html for SPA routing."""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Not found'}), 404
+    return send_from_directory('public', 'index.html')
+
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
