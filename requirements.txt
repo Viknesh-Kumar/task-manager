@@ -1,1 +1,2 @@
-# Task Manager Dependencies
+Flask==2.3.2
+Flask-CORS==4.0.0

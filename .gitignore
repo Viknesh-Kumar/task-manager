@@ -35,3 +35,7 @@ ENV/
 *.swo
 *~
 .DS_Store
+
+# Environment
+.env
+.env.local
